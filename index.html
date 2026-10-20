@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BBQ割り勘</title>
+<meta name="description" content="BBQの買い出し代を、みんながスマホから入力して割り勘するアプリ">
+<meta name="theme-color" content="#d9531e">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap" id="app">
+  <header>
+    <h1><a href="./" class="home">BBQ<span>割り勘</span></a></h1>
+    <div class="event" id="titleBox" hidden>
+      <label class="cap" for="title">イベント名</label>
+      <input type="text" id="title" placeholder="例：秋の河原BBQ" maxlength="40">
+    </div>
+  </header>
+
+  <div class="status" id="status" role="status">読み込み中…</div>
+
+  <!-- トップ：新しいBBQを作る -->
+  <section id="landing" class="landing" hidden>
+    <form class="form" id="createForm">
+      <h2>新しいBBQを作る</h2>
+      <div class="field">
+        <label class="cap" for="newTitle">イベント名</label>
+        <input type="text" id="newTitle" placeholder="例：秋の河原BBQ" maxlength="40" required>
+      </div>
+      <div class="form-actions">
+        <button class="btn primary" type="submit" id="createBtn">作成して共有リンクを出す</button>
+      </div>
+      <p class="hint">作成するとこのBBQ専用のページができます。そのリンクをLINEで送れば、みんながログインなしで入力できます。</p>
+    </form>
+    <div class="panel" id="recentBox" hidden>
+      <h2>最近開いたBBQ</h2>
+      <div class="recent" id="recent"></div>
+    </div>
+  </section>
+
+  <!-- BBQページ -->
+  <div id="main" hidden>
+    <section class="share">
+      <div class="share-text">
+        <span class="cap">このBBQの共有リンク</span>
+        <input type="text" id="shareUrl" readonly aria-label="共有リンク">
+      </div>
+      <div class="share-btns">
+        <button class="btn primary" type="button" id="shareBtn">LINEなどで送る</button>
+        <button class="btn" type="button" id="copyUrl">リンクをコピー</button>
+      </div>
+      <span class="toast" id="shareToast" aria-live="polite"></span>
+    </section>
+
+    <div class="grid">
+      <div class="col">
+        <section class="me-card" aria-labelledby="h-me">
+          <div class="me-row">
+            <label class="cap" id="h-me" for="me">あなたは</label>
+            <select id="me"></select>
+          </div>
+          <div class="me-status" id="meStatus"></div>
+        </section>
+
+        <section class="panel" aria-labelledby="h-members">
+          <h2 id="h-members">メンバー <small id="memberCount"></small></h2>
+          <div class="members" id="members"></div>
+          <form class="add-member" id="addMemberForm">
+            <input type="text" id="newMember" placeholder="名前を追加" autocomplete="off" maxlength="20">
+            <button class="btn" type="submit">追加</button>
+          </form>
+        </section>
+
+        <section class="panel" aria-labelledby="h-form">
+          <h2 id="h-form">買ったものを入力 <small id="formSub">レシート1枚ずつ</small></h2>
+          <form class="form" id="itemForm">
+            <div class="form-grid">
+              <div class="field">
+                <label class="cap" for="fPayer">払った人</label>
+                <select id="fPayer"></select>
+              </div>
+              <div class="field">
+                <label class="cap" for="fAmount">金額</label>
+                <span class="amount"><input type="number" inputmode="numeric" min="1" step="1" id="fAmount" placeholder="0"></span>
+              </div>
+              <div class="field full">
+                <label class="cap" for="fName">品目</label>
+                <input type="text" id="fName" placeholder="例：肉、炭、飲み物" maxlength="40">
+              </div>
+              <div class="field full">
+                <span class="cap">対象（押すと外せます）</span>
+                <div class="targets" id="fTargets"></div>
+              </div>
+            </div>
+            <div class="form-actions">
+              <button class="btn primary" type="submit" id="fSubmit">追加する</button>
+              <button class="btn" type="button" id="fCancel" hidden>キャンセル</button>
+              <span class="toast" id="formToast" aria-live="polite"></span>
+            </div>
+            <p class="hint">お酒を飲まない人や途中参加の人は「対象」から外すと、その品目の負担がなくなります。あとから追加したメンバーは自動で対象に入ります。</p>
+          </form>
+        </section>
+
+        <section class="panel" aria-labelledby="h-items">
+          <h2 id="h-items">買い出し一覧 <small id="itemCount"></small></h2>
+          <div class="items" id="items"></div>
+        </section>
+      </div>
+
+      <div class="receipt-wrap">
+        <section class="receipt" aria-labelledby="h-result">
+          <div class="r-head">
+            <span class="t" id="h-result">精算レシート</span>
+            <span class="d" id="rTitle"></span>
+          </div>
+          <hr class="dash">
+          <div class="big">
+            <div><span class="cap">合計</span><span class="v num" id="total">¥0</span></div>
+            <div><span class="cap">1人あたり（全員対象の場合）</span><span class="v num accent" id="perHead">¥0</span></div>
+          </div>
+          <hr class="dash">
+          <div class="tbl">
+            <table>
+              <thead><tr><th>名前</th><th>立替</th><th>負担</th><th>差額</th></tr></thead>
+              <tbody id="summary"></tbody>
+            </table>
+          </div>
+          <hr class="dash">
+          <span class="cap">送金リスト（回数が少なくなる組み合わせ）</span>
+          <ul class="transfers" id="transfers"></ul>
+          <p class="note" id="roundNote"></p>
+          <div class="r-actions">
+            <div class="units" role="group" aria-label="端数の丸め単位">
+              <button type="button" data-unit="1">1円</button>
+              <button type="button" data-unit="10">10円</button>
+              <button type="button" data-unit="100">100円</button>
+            </div>
+            <button class="btn primary" id="copy" type="button">精算結果をコピー</button>
+          </div>
+          <div class="toast" id="toast" aria-live="polite"></div>
+          <textarea id="copyFallback" hidden readonly aria-label="コピー用テキスト"></textarea>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

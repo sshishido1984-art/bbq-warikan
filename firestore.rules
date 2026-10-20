@@ -1,0 +1,58 @@
+rules_version = '2';
+
+// ログインなしで使うためのルール。
+// ・BBQごとのページは推測できないランダムなIDで区切り、IDを知っている人だけが読み書きできる
+// ・全BBQの一覧取得は禁止
+// ・保存できる項目と文字数・金額の範囲を制限する
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function validTitle(d) {
+      return d.title is string && d.title.size() <= 40;
+    }
+    function validEvent(d) {
+      return d.keys().hasOnly(['title', 'unit', 'createdAt'])
+        && validTitle(d)
+        && d.unit in [1, 10, 100]
+        && d.createdAt is number;
+    }
+    function eventExists(eventId) {
+      return exists(/databases/$(database)/documents/events/$(eventId));
+    }
+
+    match /events/{eventId} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if eventId.size() >= 20 && validEvent(request.resource.data);
+      allow update: if validEvent(request.resource.data);
+      allow delete: if false;
+
+      match /people/{personId} {
+        allow read: if true;
+        allow create, update: if eventExists(eventId)
+          && request.resource.data.keys().hasOnly(['name', 'createdAt'])
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 20
+          && request.resource.data.createdAt is number;
+        allow delete: if true;
+      }
+
+      match /items/{itemId} {
+        allow read: if true;
+        allow create, update: if eventExists(eventId)
+          && request.resource.data.keys().hasOnly(['payer', 'name', 'amount', 'excluded', 'createdAt'])
+          && request.resource.data.payer is string
+          && request.resource.data.name is string
+          && request.resource.data.name.size() <= 40
+          && request.resource.data.amount is int
+          && request.resource.data.amount > 0
+          && request.resource.data.amount <= 10000000
+          && request.resource.data.excluded is list
+          && request.resource.data.excluded.size() <= 50
+          && request.resource.data.createdAt is number;
+        allow delete: if true;
+      }
+    }
+  }
+}
