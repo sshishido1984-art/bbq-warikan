@@ -25,7 +25,7 @@ service cloud.firestore {
       allow list: if false;
       allow create: if eventId.size() >= 20 && validEvent(request.resource.data);
       allow update: if validEvent(request.resource.data);
-      allow delete: if false;
+      allow delete: if true;
 
       match /people/{personId} {
         allow read: if true;

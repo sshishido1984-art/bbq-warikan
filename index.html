@@ -146,6 +146,15 @@
         </section>
       </div>
     </div>
+
+    <section class="danger-zone" aria-labelledby="h-delete">
+      <h2 id="h-delete">イベントの削除</h2>
+      <p class="hint">精算が終わったら削除できます。メンバーと支払いの記録がすべて消え、リンクを持っている全員が開けなくなります。元には戻せません。</p>
+      <div class="form-actions">
+        <button class="btn danger" type="button" id="deleteEvent">このイベントを削除</button>
+        <span class="toast" id="deleteToast" aria-live="polite"></span>
+      </div>
+    </section>
   </div>
 </div>
 <script type="module" src="app.js"></script>

@@ -168,3 +168,9 @@ td.neg { color: var(--accent); }
 #copyFallback { width: 100%; min-height: 140px; font-family: var(--font-num); font-size: 12px; background: var(--bg); color: var(--fg); border: 1.5px solid var(--line); border-radius: 8px; padding: 8px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
 .share .toast:empty { display: none; }
+
+/* 最近開いた割り勘・削除 */
+.recent-row { display: flex; align-items: center; gap: 8px; }
+.recent-row a { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.danger-zone { margin-top: 12px; padding-top: 20px; border-top: 2px dashed var(--line); display: flex; flex-direction: column; gap: 10px; max-width: 560px; }
+.danger-zone h2 { font-size: 16px; }

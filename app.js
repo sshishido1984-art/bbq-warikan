@@ -18,6 +18,7 @@ const meKey = 'bbq-me-' + eventId;
 let me = lsGet(meKey) || '';
 let editingId = null;
 let draft = { payer: '', excluded: [] };
+let deleting = false;
 const nameOf = id => (S.people.find(p => p.id === id) || {}).name || '（削除された人）';
 
 function setStatus(kind, text) { const el = $('status'); el.hidden = !text; el.className = 'status ' + (kind || ''); el.textContent = text || ''; }
@@ -33,6 +34,7 @@ function rememberRecent(id, title) {
   list.unshift({ id, title: title || '（イベント名なし）', at: Date.now() });
   lsSet('bbq-recent', JSON.stringify(list.slice(0, 10)));
 }
+function forgetRecent(id) { lsSet('bbq-recent', JSON.stringify(recentList().filter(r => r.id !== id))); }
 
 // ---------- 保存先 ----------
 async function firebaseStore(id) {
@@ -47,6 +49,7 @@ async function firebaseStore(id) {
   const onErr = () => setStatus('warn', 'データを読み込めませんでした。通信状態を確認して、ページを開き直してください。');
   fs.onSnapshot(ev, s => {
     if (!s.exists()) { if (!s.metadata.fromCache) { S.eventMissing = true; renderAll(); } return; }
+    if (deleting) return;
     S.meta = { title: '', unit: 10, ...s.data() }; rememberRecent(id, S.meta.title); renderAll();
   }, onErr);
   fs.onSnapshot(fs.query(people, fs.orderBy('createdAt')), s => {
@@ -63,6 +66,22 @@ async function firebaseStore(id) {
       : fs.addDoc(items, { ...data, createdAt: Date.now() }),
     deleteItem: iid => fs.deleteDoc(fs.doc(items, iid)),
     setMeta: patch => fs.setDoc(ev, { title: S.meta.title || '', unit: S.meta.unit || 10, createdAt: S.meta.createdAt || Date.now(), ...patch }),
+    // 支払い・メンバーを消してから、イベント本体を消す
+    deleteEvent: async () => {
+      const [ps, is] = await Promise.all([fs.getDocs(people), fs.getDocs(items)]);
+      const refs = [...ps.docs, ...is.docs].map(d => d.ref);
+      for (let k = 0; k < refs.length; k += 400) {
+        const batch = fs.writeBatch(db);
+        refs.slice(k, k + 400).forEach(r => batch.delete(r));
+        await batch.commit();
+      }
+      try { await fs.deleteDoc(ev); }
+      catch (e) {
+        // 古いルールのままだと本体は消せないので、イベント名だけ空にしておく
+        if (e && e.code === 'permission-denied') await fs.setDoc(ev, { title: '', unit: 10, createdAt: S.meta.createdAt || Date.now() });
+        else throw e;
+      }
+    },
   };
 }
 
@@ -86,6 +105,7 @@ function localStore(id) {
     },
     deleteItem: async iid => { S.items = S.items.filter(i => i.id !== iid); persist(); },
     setMeta: async patch => { S.meta = { ...S.meta, ...patch }; persist(); },
+    deleteEvent: async () => { try { localStorage.removeItem(KEY); } catch (e) {} },
   };
 }
 
@@ -228,6 +248,7 @@ function renderResult(r) {
 function renderAll() {
   if (S.eventMissing) {
     $('main').hidden = true; $('titleBox').hidden = true;
+    forgetRecent(eventId);
     setStatus('warn', 'この割り勘のページは見つかりませんでした。リンクが途中で切れていないか確認してください。');
     return;
   }
@@ -358,6 +379,24 @@ function bindMain() {
     write(() => store.setMeta({ unit: u }));
   });
 
+  $('deleteEvent').addEventListener('click', async () => {
+    const btn = $('deleteEvent');
+    if (!arm('event', btn, 'もう一度押すと全員分を削除します')) return;
+    btn.disabled = true;
+    deleting = true;
+    try {
+      await store.deleteEvent();
+      forgetRecent(eventId);
+      lsSet(meKey, '');
+      location.href = './';
+    } catch (err) {
+      console.error(err);
+      btn.disabled = false;
+      deleting = false;
+      flash('deleteToast', '削除できませんでした。通信状態を確認して、もう一度押してください。', true);
+    }
+  });
+
   $('copy').addEventListener('click', async () => {
     const text = buildText();
     if (await copyText(text, 'toast', 'コピーしました。LINEに貼り付けて送れます。')) { $('copyFallback').hidden = true; return; }
@@ -369,9 +408,21 @@ function bindMain() {
 // ---------- トップページ ----------
 function showLanding() {
   $('landing').hidden = false;
-  const list = recentList();
-  $('recentBox').hidden = !list.length;
-  $('recent').innerHTML = list.map(r => `<a href="?e=${encodeURIComponent(r.id)}">${esc(r.title)}</a>`).join('');
+  const renderRecent = () => {
+    const list = recentList();
+    $('recentBox').hidden = !list.length;
+    $('recent').innerHTML = list.map(r => `
+      <div class="recent-row">
+        <a href="?e=${encodeURIComponent(r.id)}">${esc(r.title)}</a>
+        <button class="btn small" type="button" data-forget="${esc(r.id)}">一覧から外す</button>
+      </div>`).join('');
+  };
+  renderRecent();
+  $('recent').addEventListener('click', e => {
+    const btn = e.target.closest('[data-forget]'); if (!btn) return;
+    forgetRecent(btn.dataset.forget);
+    renderRecent();
+  });
   $('createForm').addEventListener('submit', async e => {
     e.preventDefault();
     const title = $('newTitle').value.trim();
