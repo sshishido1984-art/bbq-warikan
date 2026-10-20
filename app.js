@@ -26,7 +26,7 @@ function flash(id, text, err) {
   clearTimeout(el._t); el._t = setTimeout(() => { el.textContent = ''; }, 3500);
 }
 
-// 最近開いたBBQ（この端末だけ）
+// 最近開いた割り勘（この端末だけ）
 function recentList() { try { return JSON.parse(lsGet('bbq-recent')) || []; } catch (e) { return []; } }
 function rememberRecent(id, title) {
   const list = recentList().filter(r => r.id !== id);
@@ -150,7 +150,7 @@ function renderMe(r) {
   const pay = r.transfers.filter(t => t.fromId === me), get = r.transfers.filter(t => t.toId === me);
   if (pay.length) el.innerHTML = pay.map(t => `${esc(t.to)}さんへ <span class="amt">${yen(t.amount)}</span> 払います`).join('<br>');
   else if (get.length) el.innerHTML = get.map(t => `${esc(t.from)}さんから <span class="amt">${yen(t.amount)}</span> 受け取ります`).join('<br>');
-  else { el.classList.add('ok'); el.textContent = r.total > 0 ? 'あなたの精算はありません。' : 'まだ買い出しの入力がありません。'; }
+  else { el.classList.add('ok'); el.textContent = r.total > 0 ? 'あなたの精算はありません。' : 'まだ支払いの入力がありません。'; }
 }
 
 const armed = {};
@@ -189,7 +189,7 @@ function renderItems() {
   const total = S.items.reduce((s, i) => s + (Number(i.amount) || 0), 0);
   $('itemCount').textContent = S.items.length ? `${S.items.length}件・${yen(total)}` : '';
   if (!S.items.length) {
-    $('items').innerHTML = '<div class="empty">まだ入力がありません。買い出しをした人は、上のフォームから自分の分を入れてください。</div>';
+    $('items').innerHTML = '<div class="empty">まだ入力がありません。立て替えた人は、上のフォームから自分の分を入れてください。</div>';
     return;
   }
   $('items').innerHTML = S.items.map(it => {
@@ -217,7 +217,7 @@ function renderResult(r) {
     : '<tr><td colspan="4" class="note">メンバーを追加すると表示されます</td></tr>';
   $('transfers').innerHTML = r.transfers.length ? r.transfers.map(t => `
     <li class="${t.fromId === me || t.toId === me ? 'me' : ''}"><span class="who">${esc(t.from)}</span><span class="arrow">→</span><span class="who">${esc(t.to)}</span><span class="amt">${yen(t.amount)}</span></li>`).join('')
-    : `<li class="msg">${r.total > 0 ? '送金は不要です。全員ぴったり。' : '買い出しが入力されると、ここに送金リストが出ます'}</li>`;
+    : `<li class="msg">${r.total > 0 ? '送金は不要です。全員ぴったり。' : '支払いが入力されると、ここに送金リストが出ます'}</li>`;
   const notes = ['差額がプラスの人は受け取り、マイナスの人は支払いです。'];
   if (r.unit > 1 && r.transfers.length) notes.push(`送金額は${r.unit}円単位に丸めています（丸めの誤差 合計${signed(r.diff)}）。`);
   if (r.orphan) notes.push('⚠ 払った人が削除されたか、対象者が誰もいない品目があり、その分は計算に入っていません。');
@@ -228,18 +228,18 @@ function renderResult(r) {
 function renderAll() {
   if (S.eventMissing) {
     $('main').hidden = true; $('titleBox').hidden = true;
-    setStatus('warn', 'このBBQのページは見つかりませんでした。リンクが途中で切れていないか確認してください。');
+    setStatus('warn', 'この割り勘のページは見つかりませんでした。リンクが途中で切れていないか確認してください。');
     return;
   }
   if (document.activeElement !== $('title')) $('title').value = S.meta.title || '';
-  document.title = (S.meta.title ? S.meta.title + '｜' : '') + 'BBQ割り勘';
+  document.title = (S.meta.title ? S.meta.title + '｜' : '') + 'みんなの割り勘';
   const r = compute();
   renderMe(r); renderMembers(); renderForm(); renderItems(); renderResult(r);
 }
 
 function buildText() {
   const r = compute();
-  const L = [`【${S.meta.title || 'BBQ'} 精算】`, `合計 ${yen(r.total)} ／ ${S.people.length}人`, '', '▼ 買い出し'];
+  const L = [`【${S.meta.title || '割り勘'} 精算】`, `合計 ${yen(r.total)} ／ ${S.people.length}人`, '', '▼ 支払い'];
   S.items.filter(it => Number(it.amount) > 0).forEach(it => {
     const ex = (it.excluded || []).filter(id => S.people.some(p => p.id === id));
     L.push(`・${it.name || '品目'} ${yen(it.amount)}　${nameOf(it.payer)}立替${ex.length ? `（${ex.map(nameOf).join('・')}を除く）` : ''}`);
@@ -264,7 +264,7 @@ async function copyText(text, toastId, okMsg) {
   catch (e) { return false; }
 }
 
-// ---------- BBQページの操作 ----------
+// ---------- イベントページの操作 ----------
 function bindMain() {
   $('shareUrl').value = location.href;
   $('shareUrl').addEventListener('focus', e => e.target.select());
@@ -272,7 +272,7 @@ function bindMain() {
     if (!await copyText(location.href, 'shareToast', 'リンクをコピーしました。LINEに貼り付けて送ってください。')) { $('shareUrl').focus(); flash('shareToast', 'リンクを選択しました。コピーしてください。', true); }
   });
   $('shareBtn').addEventListener('click', async () => {
-    const data = { title: S.meta.title || 'BBQ割り勘', text: `${S.meta.title || 'BBQ'}の割り勘ページです。自分が買ったものを入力してください。`, url: location.href };
+    const data = { title: S.meta.title || 'みんなの割り勘', text: `${S.meta.title || '割り勘'}の割り勘ページです。自分が支払ったものを入力してください。`, url: location.href };
     if (navigator.share) { try { await navigator.share(data); return; } catch (e) { if (e.name === 'AbortError') return; } }
     if (!await copyText(data.text + '\n' + data.url, 'shareToast', '案内文とリンクをコピーしました。LINEに貼り付けて送ってください。')) { $('shareUrl').focus(); }
   });

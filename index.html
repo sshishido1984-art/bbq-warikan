@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>BBQ割り勘</title>
-<meta name="description" content="BBQの買い出し代を、みんながスマホから入力して割り勘するアプリ">
+<title>みんなの割り勘</title>
+<meta name="description" content="旅行や飲み会、イベントの立て替えを、みんながスマホから入力して割り勘するアプリ">
 <meta name="theme-color" content="#d9531e">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -14,39 +14,39 @@
 <body>
 <div class="wrap" id="app">
   <header>
-    <h1><a href="./" class="home">BBQ<span>割り勘</span></a></h1>
+    <h1><a href="./" class="home">みんなの<span>割り勘</span></a></h1>
     <div class="event" id="titleBox" hidden>
       <label class="cap" for="title">イベント名</label>
-      <input type="text" id="title" placeholder="例：秋の河原BBQ" maxlength="40">
+      <input type="text" id="title" placeholder="例：秋のキャンプ、歓送迎会" maxlength="40">
     </div>
   </header>
 
   <div class="status" id="status" role="status">読み込み中…</div>
 
-  <!-- トップ：新しいBBQを作る -->
+  <!-- トップ：新しい割り勘を作る -->
   <section id="landing" class="landing" hidden>
     <form class="form" id="createForm">
-      <h2>新しいBBQを作る</h2>
+      <h2>新しい割り勘を作る</h2>
       <div class="field">
         <label class="cap" for="newTitle">イベント名</label>
-        <input type="text" id="newTitle" placeholder="例：秋の河原BBQ" maxlength="40" required>
+        <input type="text" id="newTitle" placeholder="例：秋のキャンプ、歓送迎会" maxlength="40" required>
       </div>
       <div class="form-actions">
         <button class="btn primary" type="submit" id="createBtn">作成して共有リンクを出す</button>
       </div>
-      <p class="hint">作成するとこのBBQ専用のページができます。そのリンクをLINEで送れば、みんながログインなしで入力できます。</p>
+      <p class="hint">作成するとこのイベント専用のページができます。そのリンクをLINEで送れば、みんながログインなしで入力できます。</p>
     </form>
     <div class="panel" id="recentBox" hidden>
-      <h2>最近開いたBBQ</h2>
+      <h2>最近開いた割り勘</h2>
       <div class="recent" id="recent"></div>
     </div>
   </section>
 
-  <!-- BBQページ -->
+  <!-- イベントページ -->
   <div id="main" hidden>
     <section class="share">
       <div class="share-text">
-        <span class="cap">このBBQの共有リンク</span>
+        <span class="cap">このイベントの共有リンク</span>
         <input type="text" id="shareUrl" readonly aria-label="共有リンク">
       </div>
       <div class="share-btns">
@@ -76,7 +76,7 @@
         </section>
 
         <section class="panel" aria-labelledby="h-form">
-          <h2 id="h-form">買ったものを入力 <small id="formSub">レシート1枚ずつ</small></h2>
+          <h2 id="h-form">支払ったものを入力 <small id="formSub">レシート1枚ずつ</small></h2>
           <form class="form" id="itemForm">
             <div class="form-grid">
               <div class="field">
@@ -89,7 +89,7 @@
               </div>
               <div class="field full">
                 <label class="cap" for="fName">品目</label>
-                <input type="text" id="fName" placeholder="例：肉、炭、飲み物" maxlength="40">
+                <input type="text" id="fName" placeholder="例：食材、会場代、ガソリン代" maxlength="40">
               </div>
               <div class="field full">
                 <span class="cap">対象（押すと外せます）</span>
@@ -106,7 +106,7 @@
         </section>
 
         <section class="panel" aria-labelledby="h-items">
-          <h2 id="h-items">買い出し一覧 <small id="itemCount"></small></h2>
+          <h2 id="h-items">支払い一覧 <small id="itemCount"></small></h2>
           <div class="items" id="items"></div>
         </section>
       </div>
