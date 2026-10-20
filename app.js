@@ -1,4 +1,4 @@
-import { firebaseConfig } from './firebase-config.js';
+import { firebaseConfig } from './firebase-config.js?v=20261021b';
 
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
 const $ = id => document.getElementById(id);
