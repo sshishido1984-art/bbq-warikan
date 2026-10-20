@@ -192,3 +192,8 @@ td.neg { color: var(--accent); }
 .w-btn:hover { border-color: var(--fg); }
 .w-amt { text-align: right; font-weight: 600; }
 .wtag { font-family: var(--font-num); font-size: 11px; color: var(--accent); margin-left: 4px; }
+
+/* メンバー名の変更 */
+.m-name { border: 0; background: transparent; padding: 0; font-weight: 700; cursor: text; text-decoration: underline dotted var(--muted); text-underline-offset: 3px; }
+.rename-input { width: 7em; padding: 2px 6px !important; font-size: 15px !important; border-radius: 6px !important; }
+#memberToast:empty { display: none; }

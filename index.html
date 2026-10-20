@@ -70,9 +70,11 @@
           <h2 id="h-members">メンバー <small id="memberCount"></small></h2>
           <div class="members" id="members"></div>
           <form class="add-member" id="addMemberForm">
-            <input type="text" id="newMember" placeholder="名前を追加" autocomplete="off" maxlength="20">
+            <input type="text" id="newMember" placeholder="名前、または人数（例：5）" autocomplete="off" maxlength="20">
             <button class="btn" type="submit">追加</button>
           </form>
+          <p class="hint">人数（数字）を入れると、A・B・C…の名前でまとめて追加します。名前を押すと変えられます。</p>
+          <span class="toast" id="memberToast" aria-live="polite"></span>
         </section>
 
         <section class="panel" aria-labelledby="h-mode">

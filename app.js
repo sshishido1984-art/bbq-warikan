@@ -21,6 +21,18 @@ let draft = { payer: '', excluded: [] };
 let deleting = false;
 const nameOf = id => (S.people.find(p => p.id === id) || {}).name || '（削除された人）';
 const isEqual = () => S.meta.mode === 'equal';
+// 全角数字も半角にそろえる
+const toHalf = v => v.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+// 最後に使われた文字の続きから、まだ使われていない A, B, C… の名前を n 人分（Z の次は AA, AB…）
+function nextLetterNames(n) {
+  const used = new Set(S.people.map(p => p.name));
+  const label = k => { let t = ''; k++; while (k > 0) { k--; t = String.fromCharCode(65 + (k % 26)) + t; k = Math.floor(k / 26); } return t; };
+  const out = [];
+  const indexOf = nm => /^[A-Z]{1,3}$/.test(nm) ? [...nm].reduce((t, c) => t * 26 + (c.charCodeAt(0) - 64), 0) - 1 : -1;
+  const start = Math.max(-1, ...S.people.map(p => indexOf(p.name))) + 1;
+  for (let k = start; out.length < n && k < start + 1000; k++) { const nm = label(k); if (!used.has(nm)) out.push(nm); }
+  return out;
+}
 const weightOf = p => (typeof p.weight === 'number' && p.weight >= 0 ? p.weight : 1);
 const fmtW = w => (Math.round(w * 10) / 10).toString();
 
@@ -69,7 +81,13 @@ async function firebaseStore(id) {
     S.items = s.docs.map(d => ({ id: d.id, ...d.data() })); renderAll();
   }, onErr);
   return {
-    addPerson: name => fs.addDoc(people, { name, createdAt: Date.now() }),
+    addPerson: (name, createdAt = Date.now()) => fs.addDoc(people, { name, createdAt }),
+    renamePerson: (pid, name) => {
+      const p = S.people.find(x => x.id === pid);
+      const d = { name, createdAt: p.createdAt || Date.now() };
+      if (typeof p.weight === 'number') d.weight = p.weight;
+      return fs.setDoc(fs.doc(people, pid), d);
+    },
     deletePerson: pid => fs.deleteDoc(fs.doc(people, pid)),
     saveItem: (iid, data) => iid
       ? fs.setDoc(fs.doc(items, iid), { ...data, createdAt: (S.items.find(i => i.id === iid) || {}).createdAt || Date.now() })
@@ -110,7 +128,8 @@ function localStore(id) {
   rememberRecent(id, S.meta.title);
   const persist = () => { lsSet(KEY, JSON.stringify({ people: S.people, items: S.items, meta: S.meta })); rememberRecent(id, S.meta.title); renderAll(); };
   return {
-    addPerson: async name => { S.people.push({ id: randomId(), name, createdAt: Date.now() }); persist(); },
+    addPerson: async (name, createdAt = Date.now()) => { S.people.push({ id: randomId(), name, createdAt }); persist(); },
+    renamePerson: async (pid, name) => { S.people = S.people.map(p => p.id === pid ? { ...p, name } : p); persist(); },
     deletePerson: async pid => { S.people = S.people.filter(p => p.id !== pid); persist(); },
     saveItem: async (iid, data) => {
       if (iid) S.items = S.items.map(i => i.id === iid ? { ...i, ...data } : i);
@@ -208,12 +227,13 @@ function arm(key, btn, label) {
 
 function renderMembers() {
   $('memberCount').textContent = S.people.length + '人';
+  if ($('members').querySelector('.rename-input')) return;
   if (!S.people.length) {
     $('members').innerHTML = `<span class="hint">${S.peopleReady ? 'まだ誰もいません。参加者の名前を1人ずつ追加してください。' : '読み込み中…'}</span>`;
     return;
   }
   $('members').innerHTML = S.people.map(p => `
-    <span class="member ${p.id === me ? 'me' : ''}">${esc(p.name)}${p.id === me ? '<span class="you">あなた</span>' : ''}
+    <span class="member ${p.id === me ? 'me' : ''}"><button type="button" class="m-name" data-rename="${esc(p.id)}" title="名前を変える">${esc(p.name)}</button>${p.id === me ? '<span class="you">あなた</span>' : ''}
       <button class="icon-x" type="button" data-del-member="${esc(p.id)}" aria-label="${esc(p.name)}を削除">×</button>
     </span>`).join('');
 }
@@ -368,15 +388,51 @@ function bindMain() {
 
   $('addMemberForm').addEventListener('submit', async e => {
     e.preventDefault();
-    const v = $('newMember').value.trim();
+    const v = toHalf($('newMember').value.trim());
     if (!v || !store) return;
-    if (S.people.some(p => p.name === v)) { $('newMember').select(); flash('formToast', `${v}さんはもう登録されています。`, true); return; }
+    // 数字だけなら人数とみなして A, B, C… を自動で追加
+    if (/^\d+$/.test(v)) {
+      const n = Number(v);
+      if (n < 1 || n > 50) { flash('memberToast', '人数は1〜50で入れてください。', true); return; }
+      const names = nextLetterNames(n);
+      $('newMember').value = '';
+      const base = Date.now();
+      for (let k = 0; k < names.length; k++) {
+        if (!await write(() => store.addPerson(names[k], base + k), null, { toast: 'memberToast' })) return;
+      }
+      flash('memberToast', `${names[0]}〜${names[names.length - 1]}の${names.length}人を追加しました。名前を押すと変えられます。`);
+      return;
+    }
+    if (v.length > 20) { flash('memberToast', '名前は20文字までです。', true); return; }
+    if (S.people.some(p => p.name === v)) { $('newMember').select(); flash('memberToast', `${v}さんはもう登録されています。`, true); return; }
     $('newMember').value = '';
-    await write(() => store.addPerson(v));
+    await write(() => store.addPerson(v), null, { toast: 'memberToast' });
     $('newMember').focus();
   });
 
   $('members').addEventListener('click', e => {
+    const rn = e.target.closest('[data-rename]');
+    if (rn) {
+      const p = S.people.find(x => x.id === rn.dataset.rename); if (!p) return;
+      const input = document.createElement('input');
+      input.type = 'text'; input.className = 'rename-input'; input.value = p.name; input.maxLength = 20;
+      input.setAttribute('aria-label', '新しい名前');
+      rn.replaceWith(input); input.focus(); input.select();
+      let done = false;
+      const finish = async save => {
+        if (done) return; done = true;
+        const v = input.value.trim();
+        input.remove();
+        if (save && v && v !== p.name) {
+          if (S.people.some(x => x.id !== p.id && x.name === v)) flash('memberToast', `${v}さんはもう登録されています。`, true);
+          else await write(() => store.renamePerson(p.id, v), null, { toast: 'memberToast' });
+        }
+        renderAll();
+      };
+      input.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); finish(true); } if (ev.key === 'Escape') finish(false); });
+      input.addEventListener('blur', () => finish(true));
+      return;
+    }
     const btn = e.target.closest('[data-del-member]'); if (!btn) return;
     const id = btn.dataset.delMember;
     if (S.items.some(i => i.payer === id)) { flash('formToast', `${nameOf(id)}さんは立替があるため削除できません。先にその品目を削除してください。`, true); return; }
