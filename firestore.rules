@@ -11,8 +11,9 @@ service cloud.firestore {
       return d.title is string && d.title.size() <= 40;
     }
     function validEvent(d) {
-      return d.keys().hasOnly(['title', 'unit', 'createdAt'])
+      return d.keys().hasOnly(['title', 'unit', 'createdAt', 'mode'])
         && validTitle(d)
+        && (!('mode' in d) || d.mode in ['items', 'equal'])
         && d.unit in [1, 10, 100]
         && d.createdAt is number;
     }
@@ -30,7 +31,11 @@ service cloud.firestore {
       match /people/{personId} {
         allow read: if true;
         allow create, update: if eventExists(eventId)
-          && request.resource.data.keys().hasOnly(['name', 'createdAt'])
+          && request.resource.data.keys().hasOnly(['name', 'createdAt', 'weight'])
+          && (!('weight' in request.resource.data)
+              || (request.resource.data.weight is number
+                  && request.resource.data.weight >= 0
+                  && request.resource.data.weight <= 10))
           && request.resource.data.name is string
           && request.resource.data.name.size() > 0
           && request.resource.data.name.size() <= 20

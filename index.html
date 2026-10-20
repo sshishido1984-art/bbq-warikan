@@ -75,6 +75,20 @@
           </form>
         </section>
 
+        <section class="panel" aria-labelledby="h-mode">
+          <h2 id="h-mode">割り方</h2>
+          <div class="mode-switch" id="modeSwitch" role="group" aria-label="割り方">
+            <button type="button" data-mode="items" aria-pressed="true">品目ごと</button>
+            <button type="button" data-mode="equal" aria-pressed="false">全体で一律</button>
+          </div>
+          <p class="hint" id="modeDesc"></p>
+          <div class="weights-box" id="weightsBox" hidden>
+            <div class="w-head"><span class="cap">負担割合</span><span class="hint">基準は1。0.5で半分、2で倍、0で負担なし</span></div>
+            <div class="weights" id="weights"></div>
+          </div>
+          <span class="toast" id="modeToast" aria-live="polite"></span>
+        </section>
+
         <section class="panel" aria-labelledby="h-form">
           <h2 id="h-form">支払ったものを入力 <small id="formSub">レシート1枚ずつ</small></h2>
           <form class="form" id="itemForm">
@@ -91,7 +105,7 @@
                 <label class="cap" for="fName">品目</label>
                 <input type="text" id="fName" placeholder="例：食材、会場代、ガソリン代" maxlength="40">
               </div>
-              <div class="field full">
+              <div class="field full" id="fTargetsField">
                 <span class="cap">対象（押すと外せます）</span>
                 <div class="targets" id="fTargets"></div>
               </div>
@@ -101,7 +115,7 @@
               <button class="btn" type="button" id="fCancel" hidden>キャンセル</button>
               <span class="toast" id="formToast" aria-live="polite"></span>
             </div>
-            <p class="hint">お酒を飲まない人や途中参加の人は「対象」から外すと、その品目の負担がなくなります。あとから追加したメンバーは自動で対象に入ります。</p>
+            <p class="hint" id="fHint"></p>
           </form>
         </section>
 
@@ -120,7 +134,7 @@
           <hr class="dash">
           <div class="big">
             <div><span class="cap">合計</span><span class="v num" id="total">¥0</span></div>
-            <div><span class="cap">1人あたり（全員対象の場合）</span><span class="v num accent" id="perHead">¥0</span></div>
+            <div><span class="cap" id="perHeadLabel">1人あたり（全員対象の場合）</span><span class="v num accent" id="perHead">¥0</span></div>
           </div>
           <hr class="dash">
           <div class="tbl">

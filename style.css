@@ -174,3 +174,21 @@ td.neg { color: var(--accent); }
 .recent-row a { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .danger-zone { margin-top: 12px; padding-top: 20px; border-top: 2px dashed var(--line); display: flex; flex-direction: column; gap: 10px; max-width: 560px; }
 .danger-zone h2 { font-size: 16px; }
+
+/* 割り方・負担割合 */
+.mode-switch { display: inline-flex; align-self: flex-start; border: 1.5px solid var(--line); border-radius: 999px; overflow: hidden; background: var(--surface); }
+.mode-switch button { border: 0; background: transparent; padding: 8px 18px; font-weight: 700; font-size: 14px; cursor: pointer; }
+.mode-switch button[aria-pressed="true"] { background: var(--fg); color: var(--surface); }
+.weights-box { background: var(--surface); border: 1.5px solid var(--line); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.w-head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.weights { display: flex; flex-direction: column; }
+.w-row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(5.5em, auto); gap: 10px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
+.w-row:first-child { border-top: 0; }
+.w-row.me .w-name { color: var(--accent); }
+.w-name { font-weight: 700; overflow-wrap: anywhere; }
+.w-ctl { display: inline-flex; align-items: center; gap: 4px; }
+.w-ctl input[type=number] { width: 4.2em; padding: 6px 4px; text-align: center; font-family: var(--font-num); }
+.w-btn { width: 34px; height: 34px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--surface); font-weight: 700; font-size: 16px; cursor: pointer; line-height: 1; }
+.w-btn:hover { border-color: var(--fg); }
+.w-amt { text-align: right; font-weight: 600; }
+.wtag { font-family: var(--font-num); font-size: 11px; color: var(--accent); margin-left: 4px; }
