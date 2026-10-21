@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
-<link rel="stylesheet" href="style.css?v=20261021c">
+<link rel="stylesheet" href="style.css?v=20261021d">
 </head>
 <body>
 <div class="wrap" id="app">
@@ -98,7 +98,7 @@
             <p class="hint">お店などからの請求額をそのまま入れてください。払う人を選ぶと、その人へ送る金額が精算レシートに出ます。</p>
           </div>
           <div class="weights-box" id="weightsBox" hidden>
-            <div class="w-head"><span class="cap">負担割合</span><span class="hint">基準は1。0.5で半分、2で倍、0で負担なし</span></div>
+            <div class="w-head"><span class="cap">負担割合</span><span class="hint">基準は1。0.5で半分、2で倍、0で負担なし。「金額で指定」を押すと、その人だけ払う金額を決められます（残りをほかの人で分けます）</span></div>
             <div class="weights" id="weights"></div>
           </div>
           <span class="toast" id="modeToast" aria-live="polite"></span>
@@ -189,6 +189,6 @@
     </section>
   </div>
 </div>
-<script type="module" src="app.js?v=20261021c"></script>
+<script type="module" src="app.js?v=20261021d"></script>
 </body>
 </html>

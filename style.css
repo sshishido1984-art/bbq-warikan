@@ -204,3 +204,9 @@ td.neg { color: var(--accent); }
 .panel.off .form, .panel.off .items { opacity: .45; }
 .panel.off .items { pointer-events: none; }
 .off-note { margin: 0; font-size: 13px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border-radius: 10px; padding: 8px 12px; }
+
+/* 負担割合：金額で指定 */
+.w-name { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.w-mode { border: 0; background: transparent; padding: 0; font-size: 12px; font-weight: 700; color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.w-ctl.amount input[type=number] { width: 8.2em; padding: 6px 8px 6px 26px; text-align: right; }
+.w-row.fixed .w-amt { color: var(--accent); }

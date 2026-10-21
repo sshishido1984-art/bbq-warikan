@@ -1,4 +1,4 @@
-import { firebaseConfig } from './firebase-config.js?v=20261021c';
+import { firebaseConfig } from './firebase-config.js?v=20261021d';
 
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
 const $ = id => document.getElementById(id);
@@ -37,6 +37,8 @@ function nextLetterNames(n) {
   return out;
 }
 const weightOf = p => (typeof p.weight === 'number' && p.weight >= 0 ? p.weight : 1);
+// 金額を指定している人（全体で一律のとき、割合ではなくこの金額を負担する）
+const fixedOf = p => (Number.isInteger(p.fixed) && p.fixed >= 0 ? p.fixed : null);
 const fmtW = w => (Math.round(w * 10) / 10).toString();
 
 // イベント本体に保存する内容（古いデータには mode が無いので、あるときだけ入れる）
@@ -87,10 +89,12 @@ async function firebaseStore(id) {
   }, onErr);
   return {
     addPerson: (name, createdAt = Date.now()) => fs.addDoc(people, { name, createdAt }),
-    renamePerson: (pid, name) => {
-      const p = S.people.find(x => x.id === pid);
-      const d = { name, createdAt: p.createdAt || Date.now() };
+    // 名前・割合・指定金額をまとめて書き直す（patch で渡さなかった項目は今の値を残す。fixed: null で指定を外す）
+    setPerson: (pid, patch) => {
+      const p = { ...S.people.find(x => x.id === pid), ...patch };
+      const d = { name: p.name, createdAt: p.createdAt || Date.now() };
       if (typeof p.weight === 'number') d.weight = p.weight;
+      if (typeof p.fixed === 'number') d.fixed = p.fixed;
       return fs.setDoc(fs.doc(people, pid), d);
     },
     deletePerson: pid => fs.deleteDoc(fs.doc(people, pid)),
@@ -99,10 +103,6 @@ async function firebaseStore(id) {
       : fs.addDoc(items, { ...data, createdAt: Date.now() }),
     deleteItem: iid => fs.deleteDoc(fs.doc(items, iid)),
     setMeta: patch => fs.setDoc(ev, metaDoc(patch)),
-    setWeight: (pid, weight) => {
-      const p = S.people.find(x => x.id === pid);
-      return fs.setDoc(fs.doc(people, pid), { name: p.name, createdAt: p.createdAt || Date.now(), weight });
-    },
     // 支払い・メンバーを消してから、イベント本体を消す
     deleteEvent: async () => {
       const [ps, is] = await Promise.all([fs.getDocs(people), fs.getDocs(items)]);
@@ -134,7 +134,7 @@ function localStore(id) {
   const persist = () => { lsSet(KEY, JSON.stringify({ people: S.people, items: S.items, meta: S.meta })); rememberRecent(id, S.meta.title); renderAll(); };
   return {
     addPerson: async (name, createdAt = Date.now()) => { S.people.push({ id: randomId(), name, createdAt }); persist(); },
-    renamePerson: async (pid, name) => { S.people = S.people.map(p => p.id === pid ? { ...p, name } : p); persist(); },
+    setPerson: async (pid, patch) => { S.people = S.people.map(p => p.id === pid ? { ...p, ...patch } : p); persist(); },
     deletePerson: async pid => { S.people = S.people.filter(p => p.id !== pid); persist(); },
     saveItem: async (iid, data) => {
       if (iid) S.items = S.items.map(i => i.id === iid ? { ...i, ...data } : i);
@@ -143,7 +143,6 @@ function localStore(id) {
     },
     deleteItem: async iid => { S.items = S.items.filter(i => i.id !== iid); persist(); },
     setMeta: async patch => { S.meta = { ...S.meta, ...patch }; persist(); },
-    setWeight: async (pid, weight) => { S.people = S.people.map(p => p.id === pid ? { ...p, weight } : p); persist(); },
     deleteEvent: async () => { try { localStorage.removeItem(KEY); } catch (e) {} },
   };
 }
@@ -170,13 +169,23 @@ function compute() {
   let total = 0, orphan = false;
   const equal = isEqual();
   const sumW = S.people.reduce((s, p) => s + weightOf(p), 0);
-  // 全体で一律：支払いの入力は使わず、請求金額を全員で負担割合に応じて分ける
+  // 全体で一律：支払いの入力は使わず、請求金額を分ける。
+  // 金額を指定した人はその金額、残りをほかの人で負担割合に応じて分ける
+  let rest = 0, freeW = 0, warn = '';
   if (equal) {
     total = billOf();
     const bp = billPayerOf();
     if (bp) paid[bp] += total;
-    if (total > 0 && sumW <= 0) orphan = true;
-    else if (sumW > 0) S.people.forEach(p => owed[p.id] += total * weightOf(p) / sumW);
+    const fixedSum = S.people.reduce((s, p) => s + (fixedOf(p) ?? 0), 0);
+    const free = S.people.filter(p => fixedOf(p) === null);
+    freeW = free.reduce((s, p) => s + weightOf(p), 0);
+    rest = total - fixedSum;
+    S.people.forEach(p => { if (fixedOf(p) !== null) owed[p.id] = fixedOf(p); });
+    if (rest < 0) warn = `⚠ 指定した金額の合計が請求金額を${yen(-rest)}超えています。`;
+    else if (rest > 0 && freeW <= 0) warn = free.length
+      ? '⚠ 残りを分ける人の負担割合がすべて0なので、分けられません。'
+      : `⚠ 全員が金額を指定していて、残りの${yen(rest)}を分ける人がいません。`;
+    else if (rest > 0) free.forEach(p => owed[p.id] += rest * weightOf(p) / freeW);
   }
   if (!equal) S.items.forEach(it => {
     const amt = Number(it.amount) || 0;
@@ -189,7 +198,7 @@ function compute() {
     t.forEach(p => owed[p.id] += amt / t.length);
   });
   const payerSet = !equal || !!billPayerOf();
-  const rows = S.people.map(p => ({ id: p.id, name: p.name, weight: weightOf(p), paid: paid[p.id], owed: owed[p.id], bal: paid[p.id] - owed[p.id] }));
+  const rows = S.people.map(p => ({ id: p.id, name: p.name, weight: weightOf(p), fixed: equal ? fixedOf(p) : null, paid: paid[p.id], owed: owed[p.id], bal: paid[p.id] - owed[p.id] }));
   // 支払いが一番多い人から、受け取りが一番多い人へ順に相殺していく
   const cred = rows.filter(r => r.bal > 0.5).map(r => ({ ...r, left: r.bal })).sort((a, b) => b.left - a.left);
   const debt = rows.filter(r => r.bal < -0.5).map(r => ({ ...r, left: -r.bal })).sort((a, b) => b.left - a.left);
@@ -205,8 +214,8 @@ function compute() {
     if (cred[j].left < 0.5) j++;
   }
   const diff = transfers.reduce((s, t) => s + (t.amount - t.raw), 0);
-  const perHead = equal ? (sumW > 0 ? total / sumW : 0) : (S.people.length ? total / S.people.length : 0);
-  return { total, perHead, rows, transfers, diff, unit, orphan, equal, sumW, payerSet };
+  const perHead = equal ? (freeW > 0 ? Math.max(rest, 0) / freeW : 0) : (S.people.length ? total / S.people.length : 0);
+  return { total, perHead, rows, transfers, diff, unit, orphan, equal, sumW, payerSet, warn };
 }
 
 // ---------- 描画 ----------
@@ -313,15 +322,17 @@ function renderMode(r) {
   const box = $('weights');
   if (!S.people.length) { box.innerHTML = '<span class="hint">メンバーを追加すると、ここで割合を変えられます。</span>'; return; }
   const focused = box.contains(document.activeElement) && document.activeElement.tagName === 'INPUT';
-  if (!focused || box.querySelectorAll('.w-row').length !== S.people.length) {
+  const shape = r.rows.map(x => x.fixed !== null ? 'f' : 'w').join('');
+  if (!focused || box.dataset.shape !== shape || box.querySelectorAll('.w-row').length !== S.people.length) {
+    box.dataset.shape = shape;
     box.innerHTML = r.rows.map(x => `
-      <div class="w-row ${x.id === me ? 'me' : ''}">
-        <span class="w-name">${esc(x.name)}</span>
-        <span class="w-ctl">
+      <div class="w-row ${x.id === me ? 'me' : ''} ${x.fixed !== null ? 'fixed' : ''}">
+        <span class="w-name">${esc(x.name)}<button class="w-mode" type="button" data-fixtoggle="${esc(x.id)}">${x.fixed !== null ? '割合に戻す' : '金額で指定'}</button></span>
+        ${x.fixed !== null ? `<span class="w-ctl amount"><input type="number" inputmode="numeric" min="0" step="1" id="f-${esc(x.id)}" data-fid="${esc(x.id)}" value="${x.fixed}" aria-label="${esc(x.name)}が払う金額"></span>` : `<span class="w-ctl">
           <button class="w-btn" type="button" data-wstep="-0.1" data-wid="${esc(x.id)}" aria-label="${esc(x.name)}の割合を下げる">−</button>
           <input type="number" inputmode="decimal" min="0" max="10" step="0.1" id="w-${esc(x.id)}" data-wid="${esc(x.id)}" value="${fmtW(x.weight)}" aria-label="${esc(x.name)}の負担割合">
           <button class="w-btn" type="button" data-wstep="0.1" data-wid="${esc(x.id)}" aria-label="${esc(x.name)}の割合を上げる">＋</button>
-        </span>
+        </span>`}
         <span class="w-amt num" data-share="${esc(x.id)}">${yen(x.owed)}</span>
       </div>`).join('');
   } else {
@@ -335,7 +346,7 @@ function renderResult(r) {
   $('perHead').textContent = yen(Math.round(r.perHead / r.unit) * r.unit);
   $('perHeadLabel').textContent = r.equal ? '割合1の人の負担' : '1人あたり（全員対象の場合）';
   $('summary').innerHTML = r.rows.length ? r.rows.map(x => `
-    <tr class="${x.id === me ? 'me' : ''}"><td>${esc(x.name)}${r.equal && x.weight !== 1 ? `<span class="wtag">×${fmtW(x.weight)}</span>` : ''}</td><td class="num">${yen(x.paid)}</td><td class="num">${yen(x.owed)}</td>
+    <tr class="${x.id === me ? 'me' : ''}"><td>${esc(x.name)}${x.fixed !== null ? '<span class="wtag">指定</span>' : r.equal && x.weight !== 1 ? `<span class="wtag">×${fmtW(x.weight)}</span>` : ''}</td><td class="num">${yen(x.paid)}</td><td class="num">${yen(x.owed)}</td>
     <td class="num ${x.bal > 0.5 ? 'pos' : x.bal < -0.5 ? 'neg' : ''}">${signed(x.bal)}</td></tr>`).join('')
     : '<tr><td colspan="4" class="note">メンバーを追加すると表示されます</td></tr>';
   $('transfers').innerHTML = r.transfers.length ? r.transfers.map(t => `
@@ -345,10 +356,10 @@ function renderResult(r) {
       : r.total > 0 ? '送金は不要です。全員ぴったり。' : r.equal ? '請求金額を入れると、ここに送金リストが出ます' : '支払いが入力されると、ここに送金リストが出ます'}</li>`;
   const notes = ['差額がプラスの人は受け取り、マイナスの人は支払いです。'];
   if (r.unit > 1 && r.transfers.length) notes.push(`送金額は${r.unit}円単位に丸めています（丸めの誤差 合計${signed(r.diff)}）。`);
-  if (r.equal && r.rows.some(x => x.weight !== 1)) notes.push('負担割合を変えている人がいます（一覧の割合を参照）。');
-  if (r.orphan) notes.push(r.equal && r.sumW <= 0
-    ? '⚠ 全員の負担割合が0なので、分けられません。'
-    : '⚠ 払った人が削除されたか、対象者が誰もいない品目があり、その分は計算に入っていません。');
+  if (r.equal && r.rows.some(x => x.fixed === null && x.weight !== 1)) notes.push('負担割合を変えている人がいます（一覧の割合を参照）。');
+  if (r.equal && r.rows.some(x => x.fixed !== null)) notes.push('「指定」の人は決めた金額を払い、残りをほかの人で分けています。');
+  if (r.warn) notes.push(r.warn);
+  if (r.orphan && !r.equal) notes.push('⚠ 払った人が削除されたか、対象者が誰もいない品目があり、その分は計算に入っていません。');
   if (r.equal && !r.payerSet && r.total > 0) notes.push('お店に払う人が未定なので、各自の負担額だけ出しています。');
   $('roundNote').textContent = notes.join(' ');
   document.querySelectorAll('.units button').forEach(b => b.setAttribute('aria-pressed', String(Number(b.dataset.unit) === r.unit)));
@@ -377,7 +388,7 @@ function buildText() {
     L.push(`・${it.name || '品目'} ${yen(it.amount)}　${nameOf(it.payer)}立替${ex.length ? `（${ex.map(nameOf).join('・')}を除く）` : ''}`);
   });
   L.push('', '▼ 各自の負担');
-  r.rows.forEach(x => L.push(`・${x.name} ${yen(Math.round(x.owed / r.unit) * r.unit)}${r.equal && x.weight !== 1 ? `（割合 ×${fmtW(x.weight)}）` : ''}`));
+  r.rows.forEach(x => L.push(`・${x.name} ${yen(Math.round(x.owed / r.unit) * r.unit)}${x.fixed !== null ? '（金額指定）' : r.equal && x.weight !== 1 ? `（割合 ×${fmtW(x.weight)}）` : ''}`));
   L.push('', '▼ 送金');
   if (r.transfers.length) r.transfers.forEach(t => L.push(`${t.from} → ${t.to}　${yen(t.amount)}`));
   else L.push(r.equal && !r.payerSet ? '払う人が未定のため、各自の負担額を参照' : '送金なし');
@@ -458,7 +469,7 @@ function bindMain() {
         input.remove();
         if (save && v && v !== p.name) {
           if (S.people.some(x => x.id !== p.id && x.name === v)) flash('memberToast', `${v}さんはもう登録されています。`, true);
-          else await write(() => store.renamePerson(p.id, v), null, { toast: 'memberToast' });
+          else await write(() => store.setPerson(p.id, { name: v }), null, { toast: 'memberToast' });
         }
         renderAll();
       };
@@ -545,14 +556,34 @@ function bindMain() {
     const w = Math.min(10, Math.max(0, Math.round(v * 10) / 10));
     const p = S.people.find(x => x.id === pid);
     if (!p || weightOf(p) === w) { renderAll(); return; }
-    write(() => store.setWeight(pid, w), null, { toast: 'modeToast', denied: RULES_OLD });
+    write(() => store.setPerson(pid, { weight: w }), null, { toast: 'modeToast', denied: RULES_OLD });
+  };
+  const saveFixed = (pid, v) => {
+    const p = S.people.find(x => x.id === pid); if (!p) return;
+    const f = Math.round(v);
+    if (!Number.isFinite(f) || f < 0) { flash('modeToast', '金額を数字で入れてください。', true); renderAll(); return; }
+    if (f > 10000000) { flash('modeToast', '金額が大きすぎます。', true); renderAll(); return; }
+    if (fixedOf(p) === f) return;
+    write(() => store.setPerson(pid, { fixed: f }), null, { toast: 'modeToast', denied: RULES_OLD });
   };
   $('weights').addEventListener('click', e => {
+    const t = e.target.closest('[data-fixtoggle]');
+    if (t) {
+      const p = S.people.find(x => x.id === t.dataset.fixtoggle); if (!p) return;
+      if (fixedOf(p) !== null) { write(() => store.setPerson(p.id, { fixed: null }), null, { toast: 'modeToast', denied: RULES_OLD }); return; }
+      // 最初は今の負担額を入れておき、そこから直してもらう
+      const row = compute().rows.find(x => x.id === p.id);
+      const unit = Number(S.meta.unit) || 10;
+      saveFixed(p.id, row ? Math.round(row.owed / unit) * unit : 0);
+      setTimeout(() => { const el = $('f-' + p.id); if (el) { el.focus(); el.select(); } }, 50);
+      return;
+    }
     const b = e.target.closest('[data-wstep]'); if (!b) return;
     const p = S.people.find(x => x.id === b.dataset.wid); if (!p) return;
     saveWeight(p.id, weightOf(p) + Number(b.dataset.wstep));
   });
   $('weights').addEventListener('change', e => {
+    if (e.target.dataset && e.target.dataset.fid) { saveFixed(e.target.dataset.fid, e.target.value === '' ? 0 : Number(e.target.value)); return; }
     const id = e.target.dataset && e.target.dataset.wid; if (!id || e.target.tagName !== 'INPUT') return;
     saveWeight(id, e.target.value === '' ? 1 : Number(e.target.value));
   });
