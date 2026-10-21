@@ -1,4 +1,4 @@
-import { firebaseConfig } from './firebase-config.js?v=20261021b';
+import { firebaseConfig } from './firebase-config.js?v=20261021c';
 
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
 const $ = id => document.getElementById(id);
@@ -21,6 +21,9 @@ let draft = { payer: '', excluded: [] };
 let deleting = false;
 const nameOf = id => (S.people.find(p => p.id === id) || {}).name || '（削除された人）';
 const isEqual = () => S.meta.mode === 'equal';
+// 全体で一律のときの請求金額と、お店に払う人（いない人なら未定扱い）
+const billOf = () => (Number.isInteger(S.meta.bill) && S.meta.bill > 0 ? S.meta.bill : 0);
+const billPayerOf = () => (S.people.some(p => p.id === S.meta.billPayer) ? S.meta.billPayer : '');
 // 全角数字も半角にそろえる
 const toHalf = v => v.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
 // 最後に使われた文字の続きから、まだ使われていない A, B, C… の名前を n 人分（Z の次は AA, AB…）
@@ -40,6 +43,8 @@ const fmtW = w => (Math.round(w * 10) / 10).toString();
 function metaDoc(patch) {
   const m = { title: S.meta.title || '', unit: S.meta.unit || 10, createdAt: S.meta.createdAt || Date.now() };
   if (S.meta.mode) m.mode = S.meta.mode;
+  if (typeof S.meta.bill === 'number') m.bill = S.meta.bill;
+  if (typeof S.meta.billPayer === 'string') m.billPayer = S.meta.billPayer;
   return { ...m, ...patch };
 }
 
@@ -165,28 +170,32 @@ function compute() {
   let total = 0, orphan = false;
   const equal = isEqual();
   const sumW = S.people.reduce((s, p) => s + weightOf(p), 0);
-  S.items.forEach(it => {
+  // 全体で一律：支払いの入力は使わず、請求金額を全員で負担割合に応じて分ける
+  if (equal) {
+    total = billOf();
+    const bp = billPayerOf();
+    if (bp) paid[bp] += total;
+    if (total > 0 && sumW <= 0) orphan = true;
+    else if (sumW > 0) S.people.forEach(p => owed[p.id] += total * weightOf(p) / sumW);
+  }
+  if (!equal) S.items.forEach(it => {
     const amt = Number(it.amount) || 0;
     if (amt <= 0) return;
     total += amt;
     if (paid[it.payer] !== undefined) paid[it.payer] += amt; else orphan = true;
-    // 全体で一律：対象の指定は使わず、全員で負担割合に応じて分ける
-    if (equal) {
-      if (sumW <= 0) { orphan = true; return; }
-      S.people.forEach(p => owed[p.id] += amt * weightOf(p) / sumW);
-      return;
-    }
     const ex = it.excluded || [];
     const t = S.people.filter(p => !ex.includes(p.id));
     if (!t.length) { orphan = true; return; }
     t.forEach(p => owed[p.id] += amt / t.length);
   });
+  const payerSet = !equal || !!billPayerOf();
   const rows = S.people.map(p => ({ id: p.id, name: p.name, weight: weightOf(p), paid: paid[p.id], owed: owed[p.id], bal: paid[p.id] - owed[p.id] }));
   // 支払いが一番多い人から、受け取りが一番多い人へ順に相殺していく
   const cred = rows.filter(r => r.bal > 0.5).map(r => ({ ...r, left: r.bal })).sort((a, b) => b.left - a.left);
   const debt = rows.filter(r => r.bal < -0.5).map(r => ({ ...r, left: -r.bal })).sort((a, b) => b.left - a.left);
   const transfers = [];
   let i = 0, j = 0;
+  if (!payerSet) i = debt.length; // 払う人が未定なら送金リストは作らない
   while (i < debt.length && j < cred.length) {
     const x = Math.min(debt[i].left, cred[j].left);
     const rounded = Math.round(x / unit) * unit;
@@ -197,7 +206,7 @@ function compute() {
   }
   const diff = transfers.reduce((s, t) => s + (t.amount - t.raw), 0);
   const perHead = equal ? (sumW > 0 ? total / sumW : 0) : (S.people.length ? total / S.people.length : 0);
-  return { total, perHead, rows, transfers, diff, unit, orphan, equal, sumW };
+  return { total, perHead, rows, transfers, diff, unit, orphan, equal, sumW, payerSet };
 }
 
 // ---------- 描画 ----------
@@ -211,10 +220,21 @@ function renderMe(r) {
   if (document.activeElement !== $('me')) $('me').innerHTML = options(me, S.people.length ? '名前を選んでください' : 'まずメンバーを追加');
   const el = $('meStatus'); el.className = 'me-status';
   if (!me) { el.classList.add('soft'); el.textContent = '自分の名前を選ぶと、払う金額と相手がここに出ます。'; return; }
+  if (r.equal && !r.payerSet) {
+    const row = r.rows.find(x => x.id === me);
+    if (r.total > 0 && row) el.innerHTML = `あなたの負担は <span class="amt">${yen(Math.round(row.owed / r.unit) * r.unit)}</span> です`;
+    else { el.classList.add('soft'); el.textContent = 'まだ請求金額の入力がありません。'; }
+    return;
+  }
+  if (r.equal && me === billPayerOf() && r.total > 0) {
+    const get = r.transfers.filter(t => t.toId === me);
+    el.innerHTML = `お店に <span class="amt">${yen(r.total)}</span> 払います` + (get.length ? '<br>' + get.map(t => `${esc(t.from)}さんから <span class="amt">${yen(t.amount)}</span> 受け取ります`).join('<br>') : '');
+    return;
+  }
   const pay = r.transfers.filter(t => t.fromId === me), get = r.transfers.filter(t => t.toId === me);
   if (pay.length) el.innerHTML = pay.map(t => `${esc(t.to)}さんへ <span class="amt">${yen(t.amount)}</span> 払います`).join('<br>');
   else if (get.length) el.innerHTML = get.map(t => `${esc(t.from)}さんから <span class="amt">${yen(t.amount)}</span> 受け取ります`).join('<br>');
-  else { el.classList.add('ok'); el.textContent = r.total > 0 ? 'あなたの精算はありません。' : 'まだ支払いの入力がありません。'; }
+  else { el.classList.add('ok'); el.textContent = r.total > 0 ? 'あなたの精算はありません。' : r.equal ? 'まだ請求金額の入力がありません。' : 'まだ支払いの入力がありません。'; }
 }
 
 const armed = {};
@@ -244,10 +264,14 @@ function renderForm() {
   $('fTargets').innerHTML = S.people.length
     ? S.people.map(p => `<button type="button" class="chip" data-target="${esc(p.id)}" aria-pressed="${!draft.excluded.includes(p.id)}">${esc(p.name)}</button>`).join('')
     : '<span class="hint">メンバーを追加すると、ここに並びます。</span>';
-  $('fTargetsField').hidden = isEqual();
-  $('fHint').textContent = isEqual()
-    ? '「全体で一律」なので、入力した金額は全員で負担割合に応じて分けます。'
-    : 'お酒を飲まない人や途中参加の人は「対象」から外すと、その品目の負担がなくなります。あとから追加したメンバーは自動で対象に入ります。';
+  // 全体で一律のときは、支払いの入力と一覧を使えなくする（入力済みのデータは残す）
+  const off = isEqual();
+  $('itemFieldset').disabled = off;
+  $('formPanel').classList.toggle('off', off);
+  $('itemsPanel').classList.toggle('off', off);
+  $('offNote').hidden = !off;
+  $('offNote').textContent = '「全体で一律」では使いません。上の「請求金額」に入れてください。「品目ごと」に戻すと使えます。';
+  $('fHint').textContent = 'お酒を飲まない人や途中参加の人は「対象」から外すと、その品目の負担がなくなります。あとから追加したメンバーは自動で対象に入ります。';
   $('itemForm').classList.toggle('editing', !!editingId);
   $('fSubmit').textContent = editingId ? 'この内容で更新' : '追加する';
   $('fCancel').hidden = !editingId;
@@ -256,14 +280,14 @@ function renderForm() {
 
 function renderItems() {
   const total = S.items.reduce((s, i) => s + (Number(i.amount) || 0), 0);
-  $('itemCount').textContent = S.items.length ? `${S.items.length}件・${yen(total)}` : '';
+  $('itemCount').textContent = S.items.length ? `${S.items.length}件・${yen(total)}${isEqual() ? '（今は計算に入れていません）' : ''}` : '';
   if (!S.items.length) {
-    $('items').innerHTML = '<div class="empty">まだ入力がありません。立て替えた人は、上のフォームから自分の分を入れてください。</div>';
+    $('items').innerHTML = `<div class="empty">${isEqual() ? '「全体で一律」では使いません。' : 'まだ入力がありません。立て替えた人は、上のフォームから自分の分を入れてください。'}</div>`;
     return;
   }
   $('items').innerHTML = S.items.map(it => {
     const ex = (it.excluded || []).filter(id => S.people.some(p => p.id === id));
-    const scope = isEqual() ? '全員で一律' : ex.length ? `${ex.map(nameOf).map(esc).join('・')}を除く` : '全員';
+    const scope = ex.length ? `${ex.map(nameOf).map(esc).join('・')}を除く` : '全員';
     return `<div class="item">
       <span class="nm">${esc(it.name || '品目')}${it.payer === me ? '<span class="pill">あなた</span>' : ''}</span>
       <span class="am">${yen(Number(it.amount) || 0)}</span>
@@ -279,10 +303,13 @@ function renderItems() {
 function renderMode(r) {
   document.querySelectorAll('#modeSwitch button').forEach(b => b.setAttribute('aria-pressed', String((b.dataset.mode === 'equal') === r.equal)));
   $('modeDesc').textContent = r.equal
-    ? '支払いの合計を、全員で負担割合に応じて分けます。品目ごとの「対象」は使いません。'
+    ? 'お店などからの請求金額を、全員で負担割合に応じて分けます。'
     : '品目ごとに、誰が負担するか（対象）を選べます。対象になった人で均等に分けます。';
   $('weightsBox').hidden = !r.equal;
+  $('billBox').hidden = !r.equal;
   if (!r.equal) return;
+  if (document.activeElement !== $('bAmount')) $('bAmount').value = billOf() || '';
+  if (document.activeElement !== $('bPayer')) $('bPayer').innerHTML = '<option value="">まだ決めない</option>' + options(billPayerOf());
   const box = $('weights');
   if (!S.people.length) { box.innerHTML = '<span class="hint">メンバーを追加すると、ここで割合を変えられます。</span>'; return; }
   const focused = box.contains(document.activeElement) && document.activeElement.tagName === 'INPUT';
@@ -313,13 +340,16 @@ function renderResult(r) {
     : '<tr><td colspan="4" class="note">メンバーを追加すると表示されます</td></tr>';
   $('transfers').innerHTML = r.transfers.length ? r.transfers.map(t => `
     <li class="${t.fromId === me || t.toId === me ? 'me' : ''}"><span class="who">${esc(t.from)}</span><span class="arrow">→</span><span class="who">${esc(t.to)}</span><span class="amt">${yen(t.amount)}</span></li>`).join('')
-    : `<li class="msg">${r.total > 0 ? '送金は不要です。全員ぴったり。' : '支払いが入力されると、ここに送金リストが出ます'}</li>`;
+    : `<li class="msg">${r.equal && !r.payerSet
+      ? (r.total > 0 ? '「お店に払う人」を選ぶと、その人への送金リストが出ます' : '請求金額を入れると、ここに送金リストが出ます')
+      : r.total > 0 ? '送金は不要です。全員ぴったり。' : r.equal ? '請求金額を入れると、ここに送金リストが出ます' : '支払いが入力されると、ここに送金リストが出ます'}</li>`;
   const notes = ['差額がプラスの人は受け取り、マイナスの人は支払いです。'];
   if (r.unit > 1 && r.transfers.length) notes.push(`送金額は${r.unit}円単位に丸めています（丸めの誤差 合計${signed(r.diff)}）。`);
   if (r.equal && r.rows.some(x => x.weight !== 1)) notes.push('負担割合を変えている人がいます（一覧の割合を参照）。');
   if (r.orphan) notes.push(r.equal && r.sumW <= 0
     ? '⚠ 全員の負担割合が0なので、分けられません。'
     : '⚠ 払った人が削除されたか、対象者が誰もいない品目があり、その分は計算に入っていません。');
+  if (r.equal && !r.payerSet && r.total > 0) notes.push('お店に払う人が未定なので、各自の負担額だけ出しています。');
   $('roundNote').textContent = notes.join(' ');
   document.querySelectorAll('.units button').forEach(b => b.setAttribute('aria-pressed', String(Number(b.dataset.unit) === r.unit)));
 }
@@ -339,15 +369,18 @@ function renderAll() {
 
 function buildText() {
   const r = compute();
-  const L = [`【${S.meta.title || '割り勘'} 精算】`, `合計 ${yen(r.total)} ／ ${S.people.length}人`, `割り方：${r.equal ? '全体で一律（負担割合あり）' : '品目ごと'}`, '', '▼ 支払い'];
-  S.items.filter(it => Number(it.amount) > 0).forEach(it => {
+  const L = [`【${S.meta.title || '割り勘'} 精算】`, `合計 ${yen(r.total)} ／ ${S.people.length}人`, `割り方：${r.equal ? '全体で一律（負担割合あり）' : '品目ごと'}`, ''];
+  if (r.equal) L.push('▼ 請求金額', `${yen(r.total)}${billPayerOf() ? `　${nameOf(billPayerOf())}がお店に支払い` : ''}`);
+  else L.push('▼ 支払い');
+  if (!r.equal) S.items.filter(it => Number(it.amount) > 0).forEach(it => {
     const ex = r.equal ? [] : (it.excluded || []).filter(id => S.people.some(p => p.id === id));
     L.push(`・${it.name || '品目'} ${yen(it.amount)}　${nameOf(it.payer)}立替${ex.length ? `（${ex.map(nameOf).join('・')}を除く）` : ''}`);
   });
   L.push('', '▼ 各自の負担');
   r.rows.forEach(x => L.push(`・${x.name} ${yen(Math.round(x.owed / r.unit) * r.unit)}${r.equal && x.weight !== 1 ? `（割合 ×${fmtW(x.weight)}）` : ''}`));
   L.push('', '▼ 送金');
-  if (r.transfers.length) r.transfers.forEach(t => L.push(`${t.from} → ${t.to}　${yen(t.amount)}`)); else L.push('送金なし');
+  if (r.transfers.length) r.transfers.forEach(t => L.push(`${t.from} → ${t.to}　${yen(t.amount)}`));
+  else L.push(r.equal && !r.payerSet ? '払う人が未定のため、各自の負担額を参照' : '送金なし');
   L.push('', '入力・確認はこちら', location.href);
   return L.join('\n');
 }
@@ -493,6 +526,18 @@ function bindMain() {
     const b = e.target.closest('[data-mode]'); if (!b || !store) return;
     if ((b.dataset.mode === 'equal') === isEqual()) return;
     write(() => store.setMeta({ mode: b.dataset.mode }), null, { toast: 'modeToast', denied: RULES_OLD });
+  });
+
+  $('bAmount').addEventListener('change', e => {
+    const v = e.target.value === '' ? 0 : Math.round(Number(toHalf(e.target.value)));
+    if (!Number.isFinite(v) || v < 0) { flash('modeToast', '金額を数字で入れてください。', true); renderAll(); return; }
+    if (v > 10000000) { flash('modeToast', '金額が大きすぎます。', true); renderAll(); return; }
+    if (v === billOf()) return;
+    write(() => store.setMeta({ bill: v }), '請求金額を保存しました', { toast: 'modeToast', denied: RULES_OLD });
+  });
+  $('bAmount').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } });
+  $('bPayer').addEventListener('change', e => {
+    write(() => store.setMeta({ billPayer: e.target.value }), null, { toast: 'modeToast', denied: RULES_OLD });
   });
 
   const saveWeight = (pid, v) => {

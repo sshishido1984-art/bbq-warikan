@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
-<link rel="stylesheet" href="style.css?v=20261021b">
+<link rel="stylesheet" href="style.css?v=20261021c">
 </head>
 <body>
 <div class="wrap" id="app">
@@ -84,6 +84,19 @@
             <button type="button" data-mode="equal" aria-pressed="false">全体で一律</button>
           </div>
           <p class="hint" id="modeDesc"></p>
+          <div class="bill-box" id="billBox" hidden>
+            <div class="form-grid">
+              <div class="field">
+                <label class="cap" for="bAmount">請求金額</label>
+                <span class="amount"><input type="number" inputmode="numeric" min="0" step="1" id="bAmount" placeholder="0"></span>
+              </div>
+              <div class="field">
+                <label class="cap" for="bPayer">お店に払う人</label>
+                <select id="bPayer"></select>
+              </div>
+            </div>
+            <p class="hint">お店などからの請求額をそのまま入れてください。払う人を選ぶと、その人へ送る金額が精算レシートに出ます。</p>
+          </div>
           <div class="weights-box" id="weightsBox" hidden>
             <div class="w-head"><span class="cap">負担割合</span><span class="hint">基準は1。0.5で半分、2で倍、0で負担なし</span></div>
             <div class="weights" id="weights"></div>
@@ -91,9 +104,11 @@
           <span class="toast" id="modeToast" aria-live="polite"></span>
         </section>
 
-        <section class="panel" aria-labelledby="h-form">
+        <section class="panel" id="formPanel" aria-labelledby="h-form">
           <h2 id="h-form">支払ったものを入力 <small id="formSub">レシート1枚ずつ</small></h2>
+          <p class="off-note" id="offNote" hidden></p>
           <form class="form" id="itemForm">
+            <fieldset id="itemFieldset">
             <div class="form-grid">
               <div class="field">
                 <label class="cap" for="fPayer">払った人</label>
@@ -118,10 +133,11 @@
               <span class="toast" id="formToast" aria-live="polite"></span>
             </div>
             <p class="hint" id="fHint"></p>
+            </fieldset>
           </form>
         </section>
 
-        <section class="panel" aria-labelledby="h-items">
+        <section class="panel" id="itemsPanel" aria-labelledby="h-items">
           <h2 id="h-items">支払い一覧 <small id="itemCount"></small></h2>
           <div class="items" id="items"></div>
         </section>
@@ -173,6 +189,6 @@
     </section>
   </div>
 </div>
-<script type="module" src="app.js?v=20261021b"></script>
+<script type="module" src="app.js?v=20261021c"></script>
 </body>
 </html>

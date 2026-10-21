@@ -11,9 +11,11 @@ service cloud.firestore {
       return d.title is string && d.title.size() <= 40;
     }
     function validEvent(d) {
-      return d.keys().hasOnly(['title', 'unit', 'createdAt', 'mode'])
+      return d.keys().hasOnly(['title', 'unit', 'createdAt', 'mode', 'bill', 'billPayer'])
         && validTitle(d)
         && (!('mode' in d) || d.mode in ['items', 'equal'])
+        && (!('bill' in d) || (d.bill is int && d.bill >= 0 && d.bill <= 10000000))
+        && (!('billPayer' in d) || (d.billPayer is string && d.billPayer.size() <= 40))
         && d.unit in [1, 10, 100]
         && d.createdAt is number;
     }
